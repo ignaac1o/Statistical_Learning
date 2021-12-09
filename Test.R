@@ -1,5 +1,6 @@
 library(dplyr)
 library(caret)
+library(ggplot2)
 
 
 getwd()
@@ -7,9 +8,9 @@ setwd("/Users/ignacioalmodovarcardenas/Desktop/Statistical Learning/Statistical_
 
 data=read.csv2("TravelInsurancePrediction.csv",sep=",")
 
-## PREPROCESS DATA
+####### PREPROCESS DATA###
 ## https://www.section.io/engineering-education/data-preprocessing-in-r/
-
+##########################
 ## 1
 #We check for missing values
 cbind(lapply(lapply(data, is.na), sum))
@@ -42,7 +43,15 @@ trainSet[,c(2,5)] %>% scale()
 testSet[,c(2,5)] %>% scale()
 
 
+#############################
+#### ANALYZE DATA
+#############################
 
+ggplot(trainSet,aes(x=Age, y =AnnualIncome)) + geom_point()
+
+ggplot(trainSet,aes(x=Age,fill=GraduateOrNot)) + geom_density(alpha=0.6)
+
+pairs(x = trainSet,)
 
 
 
