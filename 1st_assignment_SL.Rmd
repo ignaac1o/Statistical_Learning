@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r,echo=FALSE}
+```{r,echo=FALSE,message=FALSE,cache=FALSE}
 library(dplyr)
 library(caret)
 library(ggplot2)
@@ -171,16 +171,21 @@ pairs(trainSet2[,2:7],pch=21,col=c("blue","orange2")[trainSet2$Bankrupt.])
 
 As it can be seen, most of the variables do split the observations in two groups. Even though there is no linear relationship between any of them, all of them differentiates the bankruptcy observations in one extreme of the scatter plot. Indeed we still can see that the best continuous predictors are the variables ROAC and Debt.ratio.
 
-Other useful plots to visualize classification are the ones given by QDA and LDA
+Other useful plots to visualize classification based on predictors are the ones given by QDA and LDA
 
 ```{r}
 partimat(Bankrupt. ~ Debt.ratio.. + ROA.C..before.interest.and.depreciation.before.interest + 
            Cash.Total.Assets ,data=trainSet2,method="lda",)
 ```
+
+Now using QDA with the same variables:
+
 ```{r}
 partimat(Bankrupt. ~ Debt.ratio.. + ROA.C..before.interest.and.depreciation.before.interest + 
            Cash.Total.Assets ,data=trainSet2,method="qda",)
 ```
+
+As it can be seen, these variables are actually not bad at all predictors using these methods. Even thought there are a lot of points that are not being well-classified, this methods have potential and we could use them to predict our data
 
 # Classification modeling
 
@@ -216,7 +221,7 @@ The model obtained is actually pretty good already, both Kappa and Accuracy indi
 
 Now, let's try using the functions included in the library CARET. We can use a cross validation algorithm to improve our prediction. In addition, as we want to improve the kappa and not the accuracy due to the fact that our data is not perfectly balanced, we can specify it in the metric.
 
-```{r}
+```{r,warning=FALSE}
 ctrl <- trainControl(method = "repeatedcv", repeats = 4,number = 7)
 lrFit <- train(Bankrupt. ~ ., 
                 method = "glmnet",
@@ -273,8 +278,7 @@ confusionMatrix(prediction, testSet2$Bankrupt.)
 
 Using caret:
 
-```{r,eval=FALSE}
-#QDA using CARET
+```{r,warning=FALSE}
 qdaFit <- train(Bankrupt. ~ ., 
                 method = "qda", 
                 data = trainSet2,
@@ -301,7 +305,7 @@ confusionMatrix(prediction, testSet2$Bankrupt.)
 
 And using caret:
 
-```{r,eval=FALSE}
+```{r,warning=FALSE}
 nbFit <- train(Bankrupt. ~ ., 
                 method = "nb", 
                 data = trainSet2,
@@ -310,7 +314,7 @@ nbFit <- train(Bankrupt. ~ .,
                 trControl = ctrl)
 ```
 
-```{r}
+```{r,warning=FALSE}
 nbPred = predict(nbFit, testSet2)
 confusionMatrix(nbPred, testSet2$Bankrupt.)
 ```
