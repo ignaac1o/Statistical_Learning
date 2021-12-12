@@ -1,6 +1,7 @@
 library(dplyr)
 library(caret)
 library(ggplot2)
+library(klaR)
 
 
 getwd()
@@ -50,20 +51,25 @@ summary(data)
 
 
 #colum 1- Brankcrupcy factor
-data$Bankrupt.
 #column 58 - Cash/total assets
-data$Cash.Total.Assets
 #column 38 - Liability/total assets
-data$Debt.ratio..
 #Column 59 - quiack Assets/current Liability
-data$Quick.Assets.Current.Liability
+
+data %>% ggplot(aes(x =Total.income.Total.expense)) +  
+  geom_density(aes( colour = Bankrupt., fill = Bankrupt.),alpha = 0.2)
 
 
 #Create a data.frame just using the columns that are useful
-data_m1= data %>% dplyr::select(c(1,38,58,59))
-names(data_m1)
-head(data_m1)
-######################3
+data_m1= data %>% dplyr::select(c(1,2,58,38,84,86))
+pairs(data_m1[,2:6],pch=21,col=c("blue","orange")[data_m1$Bankrupt.])
+
+#Now we take the variables that I found more interesting
+data_m1_1=dplyr::select(data_m1,c(1,2,3,6,7))
+names(data_m1_1)
+
+pairs(data_m1_1[,2:5],pch=19,col=c("blue","orange")[data_m1_1$Bankrupt.])
+
+######################
 #2nd Model
 
 #x73 - Working capital to sales
@@ -71,12 +77,30 @@ head(data_m1)
 #x81 -Cash to debt
 
 data_m2= data %>% dplyr::select(c(1,74,75,82))
-
 names(data_m2)
 
-# Encode categorical data
-#Make variable bankcrupcy factor
+######################
+#3rd Model
 
+#x6 - operating Cashflow to sales
+#x36 - debt/equity
+#x59 -Cash to debt
+
+data_m3= data %>% dplyr::select(c(1,7,37,59))
+names(data_m3)
+
+#As we are considering ratios in all the cases, we do not need to normalize the data
+
+
+#############################
+#### ANALYZE DATA
+#############################
+
+pairs(data_m1[,2:7],pch=19,col=c("blue","orange")[data_m1$Bankrupt.])
+pairs(trainSet2[,2:4],pch=19,col=c("blue","orange")[trainSet2$Bankrupt.])
+pairs(data_m3[,2:4],pch=21,col=c("blue","red")[data_m3$Bankrupt.])
+
+#I'm going to stick with the first model as it is the one that seems to be good for classifying
 
 ## 3 
 # Split data into Training and Test
@@ -86,28 +110,45 @@ index1=createDataPartition(y=data_m1$Bankrupt.,times = 1,p=0.7,list = FALSE)
 trainSet1=data_m1[index1,]
 testSet1=data_m1[-index1,]
 
-############### 2nd model
-
-index2=createDataPartition(y=data_m2$Bankrupt.,times = 1,p=0.8,list = FALSE)
-
-trainSet2=data_m2[index2,]
-testSet2=data_m2[-index2,]
-
-## 4
-# Standardize continuous data
-
-#check if data_m1 is normalized
-apply(trainSet1,MARGIN = 2,min)
-apply(trainSet1,2,max)
-
-#We can consider that our data is already normalized
 
 
-#############################
-#### ANALYZE DATA
-#############################
+ggplot(trainSet1,aes(x=Bankrupt.,y =Cash.Total.Assets )) + geom_boxplot()
 
-pairs(trainSet1[,2:4],pch=21,col=c("blue","orange")[trainSet$Bankrupt.])
 
-pairs(trainSet2[,2:4],pch=19,col=c("blue","orange")[trainSet$Bankrupt.])
+data_m1 %>% ggplot(aes(x =ROA.C..before.interest.and.depreciation.before.interest)) +  
+  geom_density(aes( colour = Bankrupt., fill = Bankrupt.),alpha = 0.2)
+
+trainSet1 %>% ggplot(aes(x =Debt.ratio..)) +  
+  geom_density(aes( colour = Bankrupt., fill = Bankrupt.),alpha = 0.2)
+
+trainSet1 %>% ggplot(aes(x =Cash.Flow.to.Equity)) +  
+  geom_density(aes( colour = Bankrupt., fill = Bankrupt.),alpha = 0.2)
+
+ggplot(trainSet1,aes(x=Bankrupt.,y = ROA.C..before.interest.and.depreciation.before.interest)) + geom_boxplot()
+
+ggplot(trainSet1,aes(x=Bankrupt.,y = Debt.ratio..)) + 
+  geom_boxplot() #+ coord_cartesian(ylim = c(0, 0.5)) 
+
+#4D QDA
+
+qda.class.bnk <- qda(Bankrupt. ~ ., trainSet1)
+partimat(Bankrupt. ~ ., data=trainSet1, method="qda")
+pred.qda = predict(qda.class.bnk, testSet1)$class
+colors.qda.bnk.good.bad <- c("black","red")[1*(testSet1[,1]==pred.qda)+1]
+pairs(testSet1[,1:5],main="Bad (in black) classifications for Iris flowers with QDA",
+      pch=19,col=colors.qda.bnk.good.bad,lower.panel=NULL)
+
+ConfMat.qda = table(pred.qda, testSet1$Bankrupt.)
+ConfMat.qda
+
+n = dim(testSet1)[1]
+error.qda <- (n - sum(diag(ConfMat.qda))) / n
+error.qda # 3% 
+
+lda.class.bnk <- lda(Bankrupt. ~ ., trainSet1)
+partimat(Bankrupt. ~ .,data=trainSet1,method="lda")
+
+
+
+
 

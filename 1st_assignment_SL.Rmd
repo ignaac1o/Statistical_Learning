@@ -1,0 +1,386 @@
+---
+title: "1_assig"
+author: "Ignacio Almodóvar"
+date: "12/11/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,echo=FALSE}
+library(dplyr)
+library(caret)
+library(ggplot2)
+library(klaR)
+library(GGally)
+library(tidyverse)
+library(MASS)
+library(caret)
+library(VGAM)
+library(e1071)
+library(ROSE)
+```
+
+# Download Data
+
+The data chosen for this study has been taken from kaggle. It contains several financial ratios from companies and a column that specifies if the company is in bankruptcy or not.
+
+The data were collected from the Taiwan Economic Journal for the years 1999 to 2009. Company bankruptcy was defined based on the business regulations of the Taiwan Stock Exchange.
+
+```{r}
+setwd("/Users/ignacioalmodovarcardenas/Desktop/Statistical Learning/Statistical_Learning/")
+data=read.csv("data.csv")
+data$Bankrupt.=as.factor(data$Bankrupt.)
+data$Liability.Assets.Flag=as.factor(data$Liability.Assets.Flag)
+dim(data)
+```
+
+We can see that there are 96 different variables. Working with this amount of variables is going to be practically impossible both in terms of understanding of the data set and about computation times. Therefore, I made a brief study about finance and found out which ratios are more useful to find whereas a company is in bankruptcy or not.
+
+- Bankrupt: Binary class, 1 for bankruptcy 0 for not.
+- ROAC: Return on total assets before interest and depreciation.
+- Effective Tax Rate
+- Total debt/Total net worth
+- Debt ratio %: Liability/Total Assets
+- Operating profit/Paid-in capital
+- Cash/Total Assets
+- Cash Flow to Equity
+- Liability-Assets Flag: 1 if Total Liability exceeds Total Assets, 0 otherwise
+
+```{r,echo=FALSE}
+data_1 = data %>% dplyr::select(c(1,2,16,38,43,58,84,86))
+names(data_1)
+```
+
+# Pre-process and Analyze
+
+First of all I wanted to check if there are any missing values NA in my data set. In order to do that I wrote a function that specifies if there are any missing values, and if so, it says the number of missing values and the column that contains it.
+
+```{r}
+missingValues=function(data){
+  count=0
+  a=cbind(lapply(lapply(data, is.na), sum))
+  for(i in 1:ncol(data)){
+    if(a[i]!=0){
+      cat("There are", a[i], "missing values in column ", i,"\n" )
+      count=count+1
+    }
+  }  
+    if(count==0){
+      cat("There are No missing values in this dataset")
+    }
+}
+
+missingValues(data)
+```
+
+Also, part of the pre-process we are going to split the dataset in training and testing sets.
+
+```{r}
+set.seed(1234)
+index1=createDataPartition(y = data_1$Bankrupt.,p=0.6,list = FALSE)
+trainSet=data_1[index1,]
+testSet=data_1[-index1,]
+```
+
+Now, looking for differentiation in groups and other characteristics we are going to have more information about which variables are the best predictors.
+
+Therefore we are mainly going to use density plot in order to know if the variables might me good for prediction or not.
+
+```{r}
+trainSet %>% ggplot(aes(x =ROA.C..before.interest.and.depreciation.before.interest)) +  
+  geom_density(aes( colour = Bankrupt., fill = Bankrupt.),alpha = 0.2)
+```
+
+We can see that using ROAC there is a slight difference on the two populations (Bankcruptcy o not), so we might use this variable for our prediction model.
+
+```{r}
+trainSet %>% ggplot(aes(x =Cash.Flow.to.Equity)) +  
+  geom_density(aes( colour = Bankrupt., fill = Bankrupt.),alpha = 0.2)
+```
+
+Using this same process we are going to delete this variable from our model, as both populations behaviors are quite similar.
+
+```{r}
+trainSet %>% ggplot(aes(x =Debt.ratio..)) +  
+  geom_density(aes( colour = Bankrupt., fill = Bankrupt.),alpha = 0.2)
+
+trainSet %>% ggplot(aes(x =Cash.Total.Assets)) +  
+  geom_density(aes( colour = Bankrupt., fill = Bankrupt.),alpha = 0.2)
+
+trainSet %>% ggplot(aes(x =Operating.profit.Paid.in.capital)) +  
+  geom_density(aes( colour = Bankrupt., fill = Bankrupt.),alpha = 0.2)
+
+trainSet %>% ggplot(aes(x =Tax.rate..A.)) +  
+  geom_density(aes( colour = Bankrupt., fill = Bankrupt.),alpha = 0.2)
+
+```
+Within all this plots we can also say that the variable "Debt.ratio" can also be a good predictor for companies in bankruptcy.
+
+In order to compare binary variables I decided to do barplots.
+
+```{r}
+ggplot(trainSet,aes(x=Liability.Assets.Flag,color=Bankrupt.,fill=Bankrupt.)) + geom_bar(size=2)
+```
+
+Within this plot you can see that the variable "Liability.Assets.Flag", is a good predictor for companies that are in Bankruptcy, as all of them have this flag, whereas only a few percentage of them that are not in Bankruptcy have this flag.
+
+However, one of the problems in our dataset is that our target variable Bankruptcy is not so well balanced, as the number of observations in bankruptcy is way lower than the ones that are not. 
+
+```{r}
+as.integer(table(trainSet$Bankrupt.)[2])/as.integer(table(trainSet$Bankrupt.)[1])*100
+```
+
+We can see that only a 3.3% of the observations are in bankruptcy. As it is quite useless to make predictive models with datasets too unbalanced, we are going to make our training data balanced.
+
+```{r}
+data_balanced_train <- ovun.sample(Bankrupt. ~ ., data = trainSet, method = "over",N = 6092)$data
+table(data_balanced_over$Bankrupt.)
+```
+
+Now let's create again a train and a control set.
+
+```{r}
+index2=createDataPartition(y = data_balanced_train$Bankrupt.,p=0.8,list = FALSE)
+trainSet2=data_balanced_train[index2,]
+testSet2=data_balanced_train[-index2,]
+```
+
+Another way to find which variables might be good predictors we can use pairs and see the correlation between the different groups.
+
+```{r}
+pairs(trainSet2[,2:7],pch=21,col=c("blue","red")[trainSet$Bankrupt.])
+```
+```{r}
+# As it can be seen, most of the variables do split the observations in two groups. Even though there is no linear relationship between any of them, all of them differentiates the bankruptcy observations in one extreme of the scatter plot. Indeed we still can see that the best continuous predictors are the variables ROAC and Debt.ratio.
+```
+
+
+
+# Classification modeling
+
+As our target is a binary variable, we are going to first start building our model by using Logistic Regression.
+
+```{r}
+log.fit = vglm(Bankrupt. ~ Debt.ratio.., family=multinomial(refLevel=1), data=trainSet2)
+prob.test = predict(log.fit, newdata=testSet2, type="response")
+pred.test <- as.factor(levels(testSet2$Bankrupt.)[max.col(prob.test)])
+ConfMat = table(pred.test,testSet2$Bankrupt.)
+ConfMat
+
+n = length(testSet2$Bankrupt.)
+prop.errors <- (n - sum(diag(ConfMat))) / n
+prop.errors
+
+accuracy <- sum(diag(ConfMat)) / n
+accuracy
+```
+
+Building our logistic model with just one of our variables already gives a pretty good accuracy rate. However, the error is still quite high. We have to try to make the model being able to predict more companies that are in bankruptcy as it.
+
+As the results obtained are promising, I am going to carry on the modeling using logistic regression, but now using all the variables in our training set.
+
+```{r}
+log.fit = vglm(Bankrupt. ~ ., family=multinomial(refLevel=1), data=trainSet2)
+prob.test = predict(log.fit, newdata=testSet2, type="response")
+pred.test <- as.factor(levels(testSet2$Bankrupt.)[max.col(prob.test)])
+confusionMatrix(pred.test,testSet2$Bankrupt.)
+```
+
+The model obtained is actually pretty good already, both Kappa and Accuracy indicators have a good rate.
+
+Now, let's try using the functions included in the library CARET. We can use a cross validation algorithm to improve our prediction. In addition, as we want to improve the kappa and not the accuracy due to the fact that our data is not perfectly balanced, we can specify it in the metric.
+
+```{r}
+ctrl <- trainControl(method = "repeatedcv", repeats = 4,number = 7)
+lrFit <- train(Bankrupt. ~ ., 
+                method = "glmnet",
+                family = "binomial",
+                data = testSet2,
+                preProcess = c("center","scale"),
+                tuneGrid = expand.grid(alpha = seq(0, 2, 0.1), lambda = seq(0, .1, 0.01)),
+                metric = "Kappa",
+                trControl = ctrl)
+```
+
+
+```{r}
+lrPred = predict(lrFit, testSet2)
+confusionMatrix(lrPred, testSet2$Bankrupt.)
+```
+
+As you can see, the prediction model obtained is very promising and behaves quite good. Nevertheless we are now going to build other models with different methods seen in class to see if we can also build good predictions with them.
+
+First of all we are going to use LDA.
+
+```{r}
+lda.model <- lda(Bankrupt. ~ ., data=trainSet2,prior=c(0.5,0.5))
+probability = predict(lda.model, newdata=testSet2)$posterior
+prediction = predict(lda.model, newdata=testSet2)$class
+confusionMatrix(prediction, testSet2$Bankrupt.)
+```
+
+Actually the accuracy obtained is quite surprising. Nevertheless we can see that again, the kappa is quite low and it directly affects to the amount of companies in bankruptcy predicted.
+
+Trying with caret and using the cross validation method the model might improve.
+
+```{r}
+ldaFit <- train(Bankrupt. ~ ., 
+                method = "lda", 
+                data = trainSet2,
+                preProcess = c("center", "scale"),
+                metric = "Accuracy",
+                trControl = ctrl)
+
+ldaPred = predict(ldaFit, testSet2)
+confusionMatrix(ldaPred,testSet2$Bankrupt.)
+```
+
+Surprisingly, this model is the best one so far, as it has both accuracy and kappa rates slightly higher than the ones obtained with the logistic regression.
+
+Now, let's try with QDA
+
+```{r}
+qda.model <- qda(Bankrupt. ~ ., data=trainSet2,prior=c(0.5,0.5))
+prediction = predict(qda.model, newdata=testSet2)$class
+confusionMatrix(prediction, testSet2$Bankrupt.)
+```
+
+Using caret:
+
+```{r,eval=FALSE}
+#QDA using CARET
+qdaFit <- train(Bankrupt. ~ ., 
+                method = "qda", 
+                data = trainSet2,
+                preProcess = c("center", "scale"),
+                metric = "Accuracy",
+                trControl = ctrl)
+```
+
+
+```{r}
+qdaPred = predict(qdaFit, testSet2)
+confusionMatrix(qdaPred,testSet2$Bankrupt.)
+```
+
+The results obtained are not bad at all, however, I have been obtaining better predictions with the models used before. Therefore, we can conclude that QDA is not a good method to predict for this dataset.
+
+Finally, let's try with Naive Bayes.
+
+```{r}
+naive.model <- naiveBayes(Bankrupt. ~ ., data=trainSet2, laplace=1, prior = c(0.5,0.5))
+prediction = predict(naive.model, newdata=testSet2)
+confusionMatrix(prediction, testSet2$Bankrupt.)
+```
+
+And using caret:
+
+```{r,eval=FALSE}
+nbFit <- train(Bankrupt. ~ ., 
+                method = "nb", 
+                data = trainSet2,
+                preProcess = c("center", "scale"),
+                metric = "Accuracy",
+                trControl = ctrl)
+```
+
+```{r}
+nbPred = predict(nbFit, testSet2)
+confusionMatrix(nbPred, testSet2$Bankrupt.)
+```
+
+Again, the results obtained are pretty good, but we have already obtained better results both with LDA and logistic regression.
+
+I have already built several models and even thoug each of them had their pros and cons, I'm going to stick with the one built using LDA in caret.
+
+```{r}
+confusionMatrix(ldaPred,testSet2$Bankrupt.)
+```
+
+Nevertheless, there is still a fact that bothers me in this model. It is the fact that the error rate for predicting companies in Bankruptcy is still quite high. From an investor point of view, this model will be quite useless, as it is predicting companies that are actually in bankruptcy wrong. Therefore, I need to upgrade this model in that aspect. This can be done changing the threshold that acts like a boundary for errors.
+
+```{r}
+lrProb = predict(ldaFit, newdata=testSet2, type="prob")
+threshold = 0.3
+lrPred = rep("0", nrow(testSet2))
+lrPred[which(lrProb[,2] > threshold)] = "1"
+lrPred = factor(lrPred)
+confusionMatrix(lrPred, testSet2$Bankrupt.)
+```
+
+
+
+
+```{r}
+# But are all the errors equally important?
+# Usually not...
+
+lrProb = predict(ldaFit, newdata=testSet, type="prob")
+# lrProb = lrProb[1:nrow(AirlinesTest),]
+threshold = 0.85
+lrPred = rep("0", nrow(testSet))
+lrPred[which(lrProb[,2] > threshold)] = "1"
+lrPred = factor(lrPred)
+confusionMatrix(lrPred, testSet$Bankrupt.)
+
+# More performance measures:
+confusionMatrix(lrPred,testSet$Bankrupt.)$byClass
+```
+
+Now let's search for the best threshold
+
+```{r}
+relative.cost <- c(1, 2, 0.5, 0.0)
+
+CM = confusionMatrix(lrPred, testSet$Bankrupt.)$table
+sum(relative.cost*CM)
+
+cost.i = matrix(NA, nrow = 10, ncol = 9)
+# 100 replicates for training/testing sets for each of the 10 values of threshold
+
+j <- 0
+ctrl <- trainControl(method = "none")
+
+for (threshold in seq(0.45,0.85,0.05)){
+
+  j <- j + 1
+  cat(j)
+  for(i in 1:10){
+
+    # partition data intro training (80%) and testing sets (20%)
+    d <- createDataPartition(trainSet$Bankrupt., p = 0.8, list = FALSE)
+    # select training sample
+    
+    train<-trainSet[d,]
+    test <-trainSet[-d,]  
+    
+    ldaFit <- train(Bankrupt. ~ ., 
+                    method = "lda", 
+                    #method = "PenalizedLDA", 
+                    #method = "sparseLDA", 
+                    #method = "stepLDA", 
+                    data = train,
+                    preProcess = c("center", "scale"),
+                    metric = "Accuracy",
+                    trControl = ctrl)
+    lrProb = predict(ldaFit, test, type="prob")
+    
+    lrPred = rep("0", nrow(test))
+    lrPred[which(lrProb[,2] > threshold)] = "1"
+    lrPred = factor(lrPred)
+    
+    CM = confusionMatrix(lrPred, test$Bankrupt.)$table
+    
+    cost.i[i,j] <- sum(relative.cost*CM)/nrow(test) # unitary cost
+    
+  }
+}
+
+boxplot(cost.i, main = "Hyper-parameter selection",
+        ylab = "cost",
+        xlab = "threshold value",names = seq(0.45,0.85,0.05),col="royalblue2")
+```
+
