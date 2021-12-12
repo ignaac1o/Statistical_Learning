@@ -1,5 +1,5 @@
 ---
-title: "1_assig"
+title: "Part 1: Statistical Tools"
 author: "Ignacio Almodóvar"
 date: "12/11/2021"
 output: html_document
@@ -85,7 +85,7 @@ trainSet=data_1[index1,]
 testSet=data_1[-index1,]
 ```
 
-Now, looking for differentiation in groups and other characteristics we are going to have more information about which variables are the best predictors.
+Now, looking for differentiation in groups and other characteristics I am going to look for more information about which variables are the best predictors.
 
 Therefore we are mainly going to use density plot in order to know if the variables might me good for prediction or not.
 
@@ -101,7 +101,7 @@ trainSet %>% ggplot(aes(x =Cash.Flow.to.Equity)) +
   geom_density(aes( colour = Bankrupt., fill = Bankrupt.),alpha = 0.2)
 ```
 
-Using this same process we are going to delete this variable from our model, as both populations behaviors are quite similar.
+Using this same process we can conclude that this variable is not going to be a god predictor by herself for our model, as both populations behaviors are quite similar.
 
 ```{r}
 trainSet %>% ggplot(aes(x =Debt.ratio..)) +  
@@ -127,7 +127,7 @@ ggplot(trainSet,aes(x=Liability.Assets.Flag,color=Bankrupt.,fill=Bankrupt.)) + g
 
 Within this plot you can see that the variable "Liability.Assets.Flag", is a good predictor for companies that are in Bankruptcy, as all of them have this flag, whereas only a few percentage of them that are not in Bankruptcy have this flag.
 
-However, one of the problems in our dataset is that our target variable Bankruptcy is not so well balanced, as the number of observations in bankruptcy is way lower than the ones that are not. 
+However, one of the problems in this dataset is that our target variable Bankruptcy is not so well balanced, as the number of observations in bankruptcy is way lower than the ones that are not. 
 
 ```{r}
 as.integer(table(trainSet$Bankrupt.)[2])/as.integer(table(trainSet$Bankrupt.)[1])*100
@@ -137,7 +137,7 @@ We can see that only a 3.3% of the observations are in bankruptcy. As it is quit
 
 ```{r}
 data_balanced_train <- ovun.sample(Bankrupt. ~ ., data = trainSet, method = "over",N = 6092)$data
-table(data_balanced_over$Bankrupt.)
+table(data_balanced_train$Bankrupt.)
 ```
 
 Now let's create again a train and a control set.
@@ -148,16 +148,39 @@ trainSet2=data_balanced_train[index2,]
 testSet2=data_balanced_train[-index2,]
 ```
 
+It is also very useful to do some boxplots in order to see if our data has large number of outliers or not.
+
+```{r}
+ggplot(trainSet2,aes(x=Bankrupt.,
+                y = ROA.C..before.interest.and.depreciation.before.interest)) + 
+  geom_boxplot()
+```
+
+As it can be seen there are a few of them, therefore we are going to save an index of outliers just in case I need to remove it in any case of the analysis.
+
+```{r}
+outliers <- boxplot(trainSet2$ROA.C..before.interest.and.depreciation.before.interest,
+                    plot=FALSE)$out
+```
+
 Another way to find which variables might be good predictors we can use pairs and see the correlation between the different groups.
 
 ```{r}
-pairs(trainSet2[,2:7],pch=21,col=c("blue","red")[trainSet$Bankrupt.])
+pairs(trainSet2[,2:7],pch=21,col=c("blue","orange2")[trainSet2$Bankrupt.])
+```
+
+As it can be seen, most of the variables do split the observations in two groups. Even though there is no linear relationship between any of them, all of them differentiates the bankruptcy observations in one extreme of the scatter plot. Indeed we still can see that the best continuous predictors are the variables ROAC and Debt.ratio.
+
+Other useful plots to visualize classification are the ones given by QDA and LDA
+
+```{r}
+partimat(Bankrupt. ~ Debt.ratio.. + ROA.C..before.interest.and.depreciation.before.interest + 
+           Cash.Total.Assets ,data=trainSet2,method="lda",)
 ```
 ```{r}
-# As it can be seen, most of the variables do split the observations in two groups. Even though there is no linear relationship between any of them, all of them differentiates the bankruptcy observations in one extreme of the scatter plot. Indeed we still can see that the best continuous predictors are the variables ROAC and Debt.ratio.
+partimat(Bankrupt. ~ Debt.ratio.. + ROA.C..before.interest.and.depreciation.before.interest + 
+           Cash.Total.Assets ,data=trainSet2,method="qda",)
 ```
-
-
 
 # Classification modeling
 
@@ -304,83 +327,91 @@ Nevertheless, there is still a fact that bothers me in this model. It is the fac
 
 ```{r}
 lrProb = predict(ldaFit, newdata=testSet2, type="prob")
-threshold = 0.3
+threshold = 0.4
 lrPred = rep("0", nrow(testSet2))
 lrPred[which(lrProb[,2] > threshold)] = "1"
 lrPred = factor(lrPred)
 confusionMatrix(lrPred, testSet2$Bankrupt.)
 ```
 
-
-
-
-```{r}
-# But are all the errors equally important?
-# Usually not...
-
-lrProb = predict(ldaFit, newdata=testSet, type="prob")
-# lrProb = lrProb[1:nrow(AirlinesTest),]
-threshold = 0.85
-lrPred = rep("0", nrow(testSet))
-lrPred[which(lrProb[,2] > threshold)] = "1"
-lrPred = factor(lrPred)
-confusionMatrix(lrPred, testSet$Bankrupt.)
-
-# More performance measures:
-confusionMatrix(lrPred,testSet$Bankrupt.)$byClass
-```
-
-Now let's search for the best threshold
+As it can bee seen, for the same model we get different results as the threshold moves. Now in order to find an optimal threshold we can run this code.
 
 ```{r}
 relative.cost <- c(1, 2, 0.5, 0.0)
-
-CM = confusionMatrix(lrPred, testSet$Bankrupt.)$table
+CM = confusionMatrix(lrPred, testSet2$Bankrupt.)$table
 sum(relative.cost*CM)
-
 cost.i = matrix(NA, nrow = 10, ncol = 9)
-# 100 replicates for training/testing sets for each of the 10 values of threshold
 
 j <- 0
-ctrl <- trainControl(method = "none")
 
-for (threshold in seq(0.45,0.85,0.05)){
+
+for (threshold in seq(0.35,0.75,0.05)){
 
   j <- j + 1
-  cat(j)
+
   for(i in 1:10){
 
     # partition data intro training (80%) and testing sets (20%)
-    d <- createDataPartition(trainSet$Bankrupt., p = 0.8, list = FALSE)
-    # select training sample
+    d <- createDataPartition(trainSet2$Bankrupt., p = 0.8, list = FALSE)
     
-    train<-trainSet[d,]
-    test <-trainSet[-d,]  
+    train<-trainSet2[d,]
+    test <-trainSet2[-d,]  
     
     ldaFit <- train(Bankrupt. ~ ., 
                     method = "lda", 
-                    #method = "PenalizedLDA", 
-                    #method = "sparseLDA", 
-                    #method = "stepLDA", 
                     data = train,
                     preProcess = c("center", "scale"),
                     metric = "Accuracy",
                     trControl = ctrl)
     lrProb = predict(ldaFit, test, type="prob")
     
-    lrPred = rep("0", nrow(test))
-    lrPred[which(lrProb[,2] > threshold)] = "1"
+    lrPred = rep(0, nrow(test))
+    lrPred[which(lrProb[,2] > threshold)] = 1
     lrPred = factor(lrPred)
     
     CM = confusionMatrix(lrPred, test$Bankrupt.)$table
     
     cost.i[i,j] <- sum(relative.cost*CM)/nrow(test) # unitary cost
+
     
   }
 }
 
 boxplot(cost.i, main = "Hyper-parameter selection",
         ylab = "cost",
-        xlab = "threshold value",names = seq(0.45,0.85,0.05),col="royalblue2")
+        xlab = "threshold value",names = seq(0.35,0.75,0.05),col="lightblue")
 ```
+From our point of view, as we are looking for having less error in the prediction of Bankruptcy companies, our optimal threshold is 0.35. If we wanted to get lower error on predicting companies that are not in Bankruptcy we will probably choose a threshold around 0.5 and 0.55.
+
+Within this we can finally build our best model.
+
+```{r}
+# optimal threshold
+threshold = 0.35
+
+# final prediction
+ldaFit <- train(Bankrupt. ~ ., 
+                method = "sparseLDA", 
+                data = trainSet2,
+                preProcess = c("center", "scale"),
+                metric = "Accuracy",
+                trControl = ctrl)
+ldaPred = predict(ldaFit, testSet2)
+
+lrProb = predict(ldaFit, newdata=testSet2, type="prob")
+lrPred = rep(0, nrow(testSet2))
+lrPred[which(lrProb[,2] > threshold)] = 1
+lrPred = factor(lrPred)
+confusionMatrix(lrPred,testSet2$Bankrupt.)
+```
+
+# Conclusions
+
+Working with this dataset has not been an easy thing. There were a few things that made it difficult and the main one was the fact that our target variable was Imbalanced, and not just a little bit. In this case the proportion was 97% of observations that were not in bankruptcy whereas only a 3% of them actually were.
+
+When I first started working on the dataset (mainly in prepossess), I did not really know much about classification, therefore I didn't thought that it was going to be a problem having this difference in proportions. Later, when I started working on the predictive models I realized that the dataset was not being very useful, due the fact that on every model the accuracy was over 0.96, as most of the observations were predicting as not being in bankruptcy and only a few of them were (between 6 and 9 observations). 
+
+As I have already worked a lot in this dataset, I could not start over with another different dataset so I focused my models on being able to get higher kappa, sensitivity, specificity and precision rates instead of focusing in the accuracy, which I really did not care about. 
+
+Then looking through different resources I found our about different methods to balance the data, and I apply them to this dataset, what brought me the possibility to build good classification models.
 
