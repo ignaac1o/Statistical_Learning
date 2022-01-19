@@ -6,7 +6,6 @@ library(klaR)
 
 getwd()
 setwd("/Users/ignacioalmodovarcardenas/Desktop/Statistical Learning/Statistical_Learning/")
-
 data=read.csv("data.csv")
 
 ####### PREPROCESS DATA###
@@ -118,6 +117,9 @@ ggplot(trainSet1,aes(x=Bankrupt.,y =Cash.Total.Assets )) + geom_boxplot()
 data_m1 %>% ggplot(aes(x =ROA.C..before.interest.and.depreciation.before.interest)) +  
   geom_density(aes( colour = Bankrupt., fill = Bankrupt.),alpha = 0.2)
 
+data %>% ggplot(aes(x =Tax.rate..A.)) +  
+  geom_density(aes( colour = Bankrupt., fill = Bankrupt.),alpha = 0.2)
+
 trainSet1 %>% ggplot(aes(x =Debt.ratio..)) +  
   geom_density(aes( colour = Bankrupt., fill = Bankrupt.),alpha = 0.2)
 
@@ -135,7 +137,7 @@ qda.class.bnk <- qda(Bankrupt. ~ ., trainSet1)
 partimat(Bankrupt. ~ ., data=trainSet1, method="qda")
 pred.qda = predict(qda.class.bnk, testSet1)$class
 colors.qda.bnk.good.bad <- c("black","red")[1*(testSet1[,1]==pred.qda)+1]
-pairs(testSet1[,1:5],main="Bad (in black) classifications for Iris flowers with QDA",
+pairs(testSet1[,1:5],main="Bad (in black) classifications for Bankcrupcy with QDA",
       pch=19,col=colors.qda.bnk.good.bad,lower.panel=NULL)
 
 ConfMat.qda = table(pred.qda, testSet1$Bankrupt.)
@@ -143,12 +145,48 @@ ConfMat.qda
 
 n = dim(testSet1)[1]
 error.qda <- (n - sum(diag(ConfMat.qda))) / n
-error.qda # 3% 
+error.qda # 3.2%
+
+## USING CV
+auxTrue = 0
+for(i in 1:n){
+  
+  # Estimation: use all data except i-th
+  lda.class.BNK <- lda(Bankrupt. ~ ., trainSet1[-i,])
+  
+  # Prediction: use just observation i-th
+  pred = predict(lda.class.BNK, testSet1[i, ])$class
+  
+  # true labels
+  true = testSet1$Bankrupt.[i]
+  
+  if (pred==true) auxTrue = auxTrue + 1
+}
+
+prop.errors <- (n - auxTrue) / n # 3.42%
+
+# LDA
 
 lda.class.bnk <- lda(Bankrupt. ~ ., trainSet1)
 partimat(Bankrupt. ~ .,data=trainSet1,method="lda")
+pred.lda = predict(lda.class.bnk, testSet1)$class
+colors.lda.bnk.good.bad <- c("black","red")[1*(testSet1[,1]==pred.lda)+1]
+pairs(testSet1[,1:5],main="Bad (in black) classifications for Bankcrupcy with LDA",
+      pch=19,col=colors.qda.bnk.good.bad,lower.panel=NULL)
 
+ConfMat.lda = table(pred.lda, testSet1$Bankrupt.)
+ConfMat.lda
 
+n = dim(testSet1)[1]
+error.lda <- (n - sum(diag(ConfMat.lda))) / n
+error.lda # 3.4%
 
+#Using cv
+
+lda.class.bnk.cv <- lda(Bankrupt. ~ ., trainSet, CV=TRUE,prior=c(0.97,3))
+ConfMat = table(trainSet[,1], lda.class.bnk.cv$class)
+ConfMat
+prop.errors <- (n - sum(diag(ConfMat))) / n
+prop.errors
 
 
