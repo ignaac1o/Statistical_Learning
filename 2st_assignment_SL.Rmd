@@ -2,11 +2,15 @@
 title: "Part 1: Statistical Tools"
 author: "Ignacio Almodóvar"
 date: "12/11/2021"
-output: html_document
+
+output: 
+  html_document:
+    toc:true
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
 ```
 
 ```{r,echo=FALSE,message=FALSE,cache=FALSE}
@@ -21,9 +25,12 @@ library(caret)
 library(VGAM)
 library(e1071)
 library(ROSE)
+library(rpart.plot)
 ```
 
-# Download Data
+# First Step
+
+## Download Data
 
 The data chosen for this study has been taken from kaggle. It contains several financial ratios from companies and a column that specifies if the company is in bankruptcy or not.
 
@@ -54,7 +61,7 @@ data_1 = data %>% dplyr::select(c(1,2,16,38,43,58,84,86))
 names(data_1)
 ```
 
-# Pre-process and Analyze
+## Pre-process and Analyze
 
 First of all I wanted to check if there are any missing values NA in my data set. In order to do that I wrote a function that specifies if there are any missing values, and if so, it says the number of missing values and the column that contains it.
 
@@ -187,7 +194,7 @@ partimat(Bankrupt. ~ Debt.ratio.. + ROA.C..before.interest.and.depreciation.befo
 
 As it can be seen, these variables are actually not bad at all predictors using these methods. Even thought there are a lot of points that are not being well-classified, this methods have potential and we could use them to predict our data
 
-# Classification modeling
+## Classification modeling
 
 As our target is a binary variable, we are going to first start building our model by using Logistic Regression.
 
@@ -321,7 +328,7 @@ confusionMatrix(nbPred, testSet2$Bankrupt.)
 
 Again, the results obtained are pretty good, but we have already obtained better results both with LDA and logistic regression.
 
-I have already built several models and even thoug each of them had their pros and cons, I'm going to stick with the one built using LDA in caret.
+I have already built several models and even though each of them had their pros and cons, I'm going to stick with the one built using LDA in caret.
 
 ```{r}
 confusionMatrix(ldaPred,testSet2$Bankrupt.)
@@ -409,7 +416,7 @@ lrPred = factor(lrPred)
 confusionMatrix(lrPred,testSet2$Bankrupt.)
 ```
 
-# Conclusions
+## Conclusions 1st step
 
 Working with this dataset has not been an easy thing. There were a few things that made it difficult and the main one was the fact that our target variable was Imbalanced, and not just a little bit. In this case the proportion was 97% of observations that were not in bankruptcy whereas only a 3% of them actually were.
 
@@ -418,4 +425,128 @@ When I first started working on the dataset (mainly in prepossess), I did not re
 As I have already worked a lot in this dataset, I could not start over with another different dataset so I focused my models on being able to get higher kappa, sensitivity, specificity and precision rates instead of focusing in the accuracy, which I really did not care about. 
 
 Then looking through different resources I found our about different methods to balance the data, and I apply them to this dataset, what brought me the possibility to build good classification models.
+
+# 2nd Step Machine Learning methods
+
+On this second step of the project we are going to use different Machine Learning methods to obtain our predictions about if a company is in bankruptcy or not. 
+
+We will test:
+
+- Nearest Neighbors
+- SVMs
+- Decision trees, Random Forest and gradient Boosting
+- Neural Networks
+
+## Nearest Neighbors
+
+First of all we are going to test how well does knn work with our dataset. This method is very useful for non-linear data, which is our case. Nevertheless it works worse on data sets with high dimension. We are also going to use cross validation over it with the same train control selected in the first step,  a "repeatedcv" for 4 times.
+
+Due to the final goal of our analysis I will keep the kappa as an accuracy method. In order to use the optimal method we will do hyperparameter tunning, so we know that the model used is the best one for our data. Using the function in caret we can  already train our model with the optimal number of neighbors for the model.
+
+```{r}
+knnFit <- train(Bankrupt. ~ ., 
+                method = "knn", 
+                data = trainSet2,
+                preProcess = c("center", "scale"),
+                tuneLength = 5,
+                metric = "Kappa",
+                trControl = ctrl)
+print(knnFit)
+```
+
+We can see that the best result is given when k=5, as both Accuracy and Kappa are the best ones obtained. This optimal k will be the one used to train our model.
+
+```{r}
+knnPred = predict(knnFit, testSet2)
+confusionMatrix(knnPred,testSet2$Bankrupt.)
+```
+
+Given the confusion matrix for the prediction and the real values we can see that the results obtained are very promising, indeed, this is the best prediction obtained so far. We can see that we are obtained an accuracy of almost an 94% and the error of the prediction is only given in companies that are predicted as Bankruptcy that are not. This is the best case for this dataset as my goal as it will be much worse predicting a company that is in Bankruptcy as not than the other way.
+
+Also, those companies that are being predicted as Bankruptcy could mean that even though they are not declared as Bankruptcy they might be very close to it, so giving a prediction of being Bankruptcy could not be that bad at all if we are seeing it from a investors point of view.
+
+## Support Vector Machines
+
+Now we are going to see how support vector machines works with our data. Again, we are going to do hyperparameter tunning in order to obtain the best parameters for our dataset. 
+
+First we are going to see how good it works for non optimal parameters.
+
+```{r}
+svm.train <- svm(Bankrupt.~., data=trainSet2, scale=T, kernel="sigmoid",
+                 gamma=0.01, cost=1)
+svm.pred <- predict(svm.train, newdata=testSet2)
+confusionMatrix(svm.pred, testSet2$Bankrupt.)
+```
+
+We can see that the results are not bad at all compared to the methods that we used in the first step. However, when compared to knn, the results are worse. Now we are going to see if we can make it better using hyperparameter tunning. First of all we are going to use Support Vector Machines with Radial Basis Function Kernel method.
+
+```{r}
+svmFit_rad <- train(Bankrupt. ~., method = "svmRadial", 
+                data = trainSet2,
+                preProcess = c("center", "scale"),
+                tuneGrid = expand.grid(C = c(0.1, .25, .5, 1),
+                                      sigma = c(0.01,.05,0.1)), 
+                metric = "Kappa",
+                trControl = ctrl)
+
+svmRadPred = predict(svmFit_rad, testSet2)
+confusionMatrix(svmRadPred,testSet2$Bankrupt.)
+```
+
+Again we can see that even though the accuracy is high, it is not as good as the one obtained by the knn method optimized. Both accuracy and kappa values are slightly higher than the ones obtained with SVM Radial not optimized.
+
+# ```{r}
+# svmFit_spectrum <- train(Bankrupt. ~., method = "svmPoly", 
+#                 data = trainSet2,
+#                 preProcess = c("center", "scale"),
+#                 tuneGrid = expand.grid(C = c(0.1, .25, .5),
+#                                         degree =c(5,6,7,8),
+#                                        scale=c(1,2)), 
+#                 metric = "Kappa",
+#                 trControl = ctrl)
+# 
+# svm_spectrumPred = predict(svmFit_spectrum, testSet2)
+# confusionMatrix(svm_spectrumPred,testSet2$Bankrupt.)
+# ```
+
+## Decission Trees
+
+As SVM did not workout as we wanted to we are going to try now with decision trees. Again, we are going to test a model optimized and another one with hyperparameter tunning.
+
+```{r}
+rpart.fit <- rpart(Bankrupt. ~., method="class", data = trainSet2)
+rpart.pred <- predict(rpart.fit, newdata=testSet2,type="class")
+confusionMatrix(rpart.pred, testSet2$Bankrupt.)
+```
+
+Using an non optimized decision tree we can see that the accuracy has gotten higher. However, it is still lower than the one obtained with knn. Even though it is not the best model for our data it works pretty good and one of the benefits of using it is that you can easily get the scheme of how the model classifies companies as bankruptcy or not and get a better understanding of it.
+
+```{r}
+rpart.plot(rpart.fit, digits = 3, fallen.leaves = TRUE,
+           type = 3, extra=101)
+```
+
+Now we are going to build a model based on decision trees with hyperparameter tunning.
+
+```{r}
+grid_c50 <- expand.grid( .winnow = c(TRUE,FALSE), .trials=c(1,5,10,15,20), .model="tree" )
+
+fit.c50 <- train(Bankrupt. ~.,
+                data=trainSet2,
+                method="C5.0",
+                metric="Kappa",
+                tuneGrid = grid_c50,
+                trControl = ctrl)
+print(fit.c50)
+
+c50.pred <- predict(fit.c50, newdata=testSet2)
+confusionMatrix(c50.pred, testSet2$Bankrupt.)
+```
+
+Surprisingly the accuracy obtained in this model is almost 99%! Also the Kappa is very high, 97%. The model has been fitted using 20 trials and window as True. This numbers are going to be very difficult to improve as it is making almost a perfect classification, not only due to the accuracy but also to the fact that again it is not predicting any companies that are in Bankruptcy as not, which is one of the most important goals of our analysis.
+
+
+
+
+
 
