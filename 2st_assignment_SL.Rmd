@@ -26,6 +26,7 @@ library(VGAM)
 library(e1071)
 library(ROSE)
 library(rpart.plot)
+library(randomForest)
 ```
 
 # First Step
@@ -434,7 +435,9 @@ We will test:
 
 - Nearest Neighbors
 - SVMs
-- Decision trees, Random Forest and gradient Boosting
+- Decision trees 
+- Random Forest 
+- Gradient Boosting
 - Neural Networks
 
 ## Nearest Neighbors
@@ -465,6 +468,7 @@ Given the confusion matrix for the prediction and the real values we can see tha
 
 Also, those companies that are being predicted as Bankruptcy could mean that even though they are not declared as Bankruptcy they might be very close to it, so giving a prediction of being Bankruptcy could not be that bad at all if we are seeing it from a investors point of view.
 
+
 ## Support Vector Machines
 
 Now we are going to see how support vector machines works with our data. Again, we are going to do hyperparameter tunning in order to obtain the best parameters for our dataset. 
@@ -494,20 +498,6 @@ confusionMatrix(svmRadPred,testSet2$Bankrupt.)
 ```
 
 Again we can see that even though the accuracy is high, it is not as good as the one obtained by the knn method optimized. Both accuracy and kappa values are slightly higher than the ones obtained with SVM Radial not optimized.
-
-# ```{r}
-# svmFit_spectrum <- train(Bankrupt. ~., method = "svmPoly", 
-#                 data = trainSet2,
-#                 preProcess = c("center", "scale"),
-#                 tuneGrid = expand.grid(C = c(0.1, .25, .5),
-#                                         degree =c(5,6,7,8),
-#                                        scale=c(1,2)), 
-#                 metric = "Kappa",
-#                 trControl = ctrl)
-# 
-# svm_spectrumPred = predict(svmFit_spectrum, testSet2)
-# confusionMatrix(svm_spectrumPred,testSet2$Bankrupt.)
-# ```
 
 ## Decission Trees
 
@@ -546,7 +536,199 @@ confusionMatrix(c50.pred, testSet2$Bankrupt.)
 Surprisingly the accuracy obtained in this model is almost 99%! Also the Kappa is very high, 97%. The model has been fitted using 20 trials and window as True. This numbers are going to be very difficult to improve as it is making almost a perfect classification, not only due to the accuracy but also to the fact that again it is not predicting any companies that are in Bankruptcy as not, which is one of the most important goals of our analysis.
 
 
+## Random Forest
+
+We are now going to test Random Forest and see if we get better or worse results than in the previous models. As we have been doing, we will first built a model without tuning parameters and another one tuning them.  
+
+```{r,results=FALSE}
+rf.train <- randomForest(Bankrupt. ~., data=trainSet2,
+                         ntree=250,mtry=10,cutoff=c(0.5,0.5),importance=TRUE, do.trace=T)
+```
+```{r}
+rf.pred <- predict(rf.train, newdata=testSet2)
+confusionMatrix(rf.pred, testSet2$Bankrupt.)
+```
+
+Again the results obtained are slightly better than the ones obtained with decision trees. 
 
 
+```{r}
+rf.train <- train(Bankrupt. ~., 
+                  method = "rf", 
+                  data = trainSet2,
+                  preProcess = c("center", "scale"),
+                  ntree = 250,
+                  cutoff=c(0.5,0.5),
+                  tuneGrid = expand.grid(mtry = c(10,20,30)), 
+                  metric = "Kappa",
+                  trControl = ctrl)
+print(rf.train)
+rf.pred <- predict(rf.train, testSet2)
+confusionMatrix(rf.pred, testSet2$Bankrupt.)
+```
+
+```{r}
+rf.pred2 <- predict(rf.train, testSet)
+confusionMatrix(rf.pred2, testSet$Bankrupt.)
+```
+
+
+
+## Gradient Boosting
+
+
+```{r}
+GBM.train <- gbm(Bankrupt.~., data=trainSet2,
+                 distribution= "bernoulli",n.trees=250,shrinkage = 0.01,interaction.depth=2,n.minobsinnode = 8)
+threshold = 0.2
+gbmProb = predict(GBM.train, newdata=testSet2, n.trees=250, type="response")
+gbmPred = rep("No", nrow(testSet2))
+gbmPred[which(gbmProb > threshold)] = "Yes"
+CM = confusionMatrix(factor(gbmPred), testing$Churn)$table
+cost = sum(as.vector(CM)*cost.unit)/sum(CM)
+cost
+```
+
+
+
+
+# Now optimize the hyper-parameters with Caret:
+
+```{r}
+xgb_grid = expand.grid(
+  nrounds = c(500,1000),
+  eta = c(0.01, 0.001), # c(0.01,0.05,0.1)
+  max_depth = c(2, 4, 6),
+  gamma = 1,
+  colsample_bytree = c(0.2, 0.4),
+  min_child_weight = c(1,5),
+  subsample = 1
+)
+
+xgb.train = train(Bankrupt. ~ .,  data=testSet2,
+                  trControl = ctrl,
+                  metric="Kappa",
+                  maximize = F,
+                  tuneGrid = xgb_grid,
+                  preProcess = c("center", "scale"),
+                  method = "xgbTree"
+)
+
+xgb.pred <- predict(xgb.train, testSet)
+confusionMatrix(xgb.pred, testSet$Bankrupt.)
+```
+
+```{r}
+# Variable importance
+xgb_imp <- varImp(xgb.train, scale = F)
+plot(xgb_imp, scales = list(y = list(cex = .95)))
+```
+
+
+# ```{r}
+# threshold = 0.2
+# xgbProb = predict(xgb.train, newdata=testSet, type="prob")
+# xgbPred = rep(0, nrow(testSet))
+# xgbPred[which(xgbProb[,2] > threshold)] = 1
+# CM = confusionMatrix(factor(xgbPred), testSet$Bankrupt.)$table
+# cost = sum(as.vector(CM)*cost.unit)/sum(CM)
+# cost
+# ```
+
+
+# not too good, because we need to improve the grid but too expensive...
+
+# Even more advanced ideas:
+# instead of using a fixed cost matrix for each customer, we could consider a 
+# different matrix for each, depending on the value of each customer for the company
+
+## Neural Networks
+
+```{r}
+dnn.train <- train(Bankrupt. ~., 
+                  method = "dnn", 
+                  data = trainSet2,
+                  preProcess = c("center", "scale"),
+                  numepochs = 20, # number of iterations on the whole training set
+                  tuneGrid = expand.grid(layer1 = 1:4,
+                                         layer2 = 0:2,
+                                         layer3 = 0:2,
+                                         hidden_dropout = 0, 
+                                         visible_dropout = 0),
+                  metric = "kappa",
+                  maximize = F,
+                  trControl = ctrl)
+
+
+xgb.pred <- predict(xgb.train, testSet2)
+confusionMatrix(xgb.pred, testSet2$Bankrupt.)
+```
+
+
+
+```{r}
+relative.cost <- c(1, 2, 0.5, 0.0)
+CM = confusionMatrix(xgb.pred, testSet$Bankrupt.)$table
+sum(relative.cost*CM)
+cost.i = matrix(NA, nrow = 10, ncol = 9)
+
+j <- 0
+
+
+for (threshold in seq(0.35,0.75,0.05)){
+
+  j <- j + 1
+
+  for(i in 1:10){
+
+    # partition data intro training (80%) and testing sets (20%)
+    d <- createDataPartition(trainSet$Bankrupt., p = 0.8, list = FALSE)
+    
+    train<-trainSet[d,]
+    test <-trainSet[-d,]  
+    
+    dnn.train <- train(Bankrupt. ~., 
+                  method = "dnn", 
+                  data = trainSet,
+                  preProcess = c("center", "scale"),
+                  numepochs = 20, # number of iterations on the whole training set
+                  tuneGrid = expand.grid(layer1 = 1:4,
+                                         layer2 = 0:2,
+                                         layer3 = 0:2,
+                                         hidden_dropout = 0, 
+                                         visible_dropout = 0),
+                  metric = "kappa",
+                  maximize = F,
+                  trControl = ctrl)
+    
+    lrProb = predict(dnn.train, test, type="prob")
+    
+    lrPred = rep(0, nrow(test))
+    lrPred[which(lrProb[,2] > threshold)] = 1
+    lrPred = factor(lrPred)
+    
+    CM = confusionMatrix(lrPred, test$Bankrupt.)$table
+    
+    cost.i[i,j] <- sum(relative.cost*CM)/nrow(test) # unitary cost
+
+    
+  }
+}
+
+boxplot(cost.i, main = "Hyper-parameter selection",
+        ylab = "cost",
+        xlab = "threshold value",names = seq(0.35,0.75,0.05),col="lightblue")
+```
+
+
+
+```{r}
+threshold = 0.45
+dnnProb = predict(dnn.train, newdata=testSet, type="prob")
+dnnPred = rep(0, nrow(testSet))
+dnnPred[which(dnnProb[,2] > threshold)] = 1
+confusionMatrix(as.factor(dnnPred),testSet$Bankrupt.)
+#EconomicCost(data = data.frame(pred  = dnnPred, obs = testing$Churn))
+```
 
 
