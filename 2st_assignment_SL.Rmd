@@ -1,11 +1,13 @@
 ---
-title: "Part 1: Statistical Tools"
+title: "Part 2: Machine Learning"
 author: "Ignacio Almodóvar"
-date: "12/11/2021"
+date: "20/01/2022"
 
 output: 
   html_document:
-    toc:true
+    toc: true
+    toc_float: true
+    theme: flatly
 ---
 
 ```{r setup, include=FALSE}
@@ -27,6 +29,7 @@ library(e1071)
 library(ROSE)
 library(rpart.plot)
 library(randomForest)
+library(gbm)
 ```
 
 # First Step
@@ -181,14 +184,14 @@ As it can be seen, most of the variables do split the observations in two groups
 
 Other useful plots to visualize classification based on predictors are the ones given by QDA and LDA
 
-```{r}
+```{r,cache=TRUE}
 partimat(Bankrupt. ~ Debt.ratio.. + ROA.C..before.interest.and.depreciation.before.interest + 
            Cash.Total.Assets ,data=trainSet2,method="lda",)
 ```
 
 Now using QDA with the same variables:
 
-```{r}
+```{r,cache=TRUE}
 partimat(Bankrupt. ~ Debt.ratio.. + ROA.C..before.interest.and.depreciation.before.interest + 
            Cash.Total.Assets ,data=trainSet2,method="qda",)
 ```
@@ -348,7 +351,7 @@ confusionMatrix(lrPred, testSet2$Bankrupt.)
 
 As it can bee seen, for the same model we get different results as the threshold moves. Now in order to find an optimal threshold we can run this code.
 
-```{r}
+```{r,cache=TRUE}
 relative.cost <- c(1, 2, 0.5, 0.0)
 CM = confusionMatrix(lrPred, testSet2$Bankrupt.)$table
 sum(relative.cost*CM)
@@ -393,6 +396,7 @@ boxplot(cost.i, main = "Hyper-parameter selection",
         ylab = "cost",
         xlab = "threshold value",names = seq(0.35,0.75,0.05),col="lightblue")
 ```
+
 From our point of view, as we are looking for having less error in the prediction of Bankruptcy companies, our optimal threshold is 0.35. If we wanted to get lower error on predicting companies that are not in Bankruptcy we will probably choose a threshold around 0.5 and 0.55.
 
 Within this we can finally build our best model.
@@ -446,7 +450,7 @@ First of all we are going to test how well does knn work with our dataset. This 
 
 Due to the final goal of our analysis I will keep the kappa as an accuracy method. In order to use the optimal method we will do hyperparameter tunning, so we know that the model used is the best one for our data. Using the function in caret we can  already train our model with the optimal number of neighbors for the model.
 
-```{r}
+```{r,cache=TRUE}
 knnFit <- train(Bankrupt. ~ ., 
                 method = "knn", 
                 data = trainSet2,
@@ -475,7 +479,7 @@ Now we are going to see how support vector machines works with our data. Again, 
 
 First we are going to see how good it works for non optimal parameters.
 
-```{r}
+```{r,cache=TRUE}
 svm.train <- svm(Bankrupt.~., data=trainSet2, scale=T, kernel="sigmoid",
                  gamma=0.01, cost=1)
 svm.pred <- predict(svm.train, newdata=testSet2)
@@ -484,7 +488,7 @@ confusionMatrix(svm.pred, testSet2$Bankrupt.)
 
 We can see that the results are not bad at all compared to the methods that we used in the first step. However, when compared to knn, the results are worse. Now we are going to see if we can make it better using hyperparameter tunning. First of all we are going to use Support Vector Machines with Radial Basis Function Kernel method.
 
-```{r}
+```{r,cache=TRUE}
 svmFit_rad <- train(Bankrupt. ~., method = "svmRadial", 
                 data = trainSet2,
                 preProcess = c("center", "scale"),
@@ -503,7 +507,7 @@ Again we can see that even though the accuracy is high, it is not as good as the
 
 As SVM did not workout as we wanted to we are going to try now with decision trees. Again, we are going to test a model optimized and another one with hyperparameter tunning.
 
-```{r}
+```{r,cache=TRUE}
 rpart.fit <- rpart(Bankrupt. ~., method="class", data = trainSet2)
 rpart.pred <- predict(rpart.fit, newdata=testSet2,type="class")
 confusionMatrix(rpart.pred, testSet2$Bankrupt.)
@@ -518,8 +522,9 @@ rpart.plot(rpart.fit, digits = 3, fallen.leaves = TRUE,
 
 Now we are going to build a model based on decision trees with hyperparameter tunning.
 
-```{r}
-grid_c50 <- expand.grid( .winnow = c(TRUE,FALSE), .trials=c(1,5,10,15,20), .model="tree" )
+```{r,cache=TRUE}
+grid_c50 <- expand.grid( .winnow = c(TRUE,FALSE), .trials=c(1,5,10,15,20),
+                         .model="tree" )
 
 fit.c50 <- train(Bankrupt. ~.,
                 data=trainSet2,
@@ -540,19 +545,20 @@ Surprisingly the accuracy obtained in this model is almost 99%! Also the Kappa i
 
 We are now going to test Random Forest and see if we get better or worse results than in the previous models. As we have been doing, we will first built a model without tuning parameters and another one tuning them.  
 
-```{r,results=FALSE}
+```{r,results=FALSE,cache=TRUE}
 rf.train <- randomForest(Bankrupt. ~., data=trainSet2,
-                         ntree=250,mtry=10,cutoff=c(0.5,0.5),importance=TRUE, do.trace=T)
+                         ntree=250,mtry=10,cutoff=c(0.5,0.5),
+                         importance=TRUE, do.trace=T)
 ```
 ```{r}
 rf.pred <- predict(rf.train, newdata=testSet2)
 confusionMatrix(rf.pred, testSet2$Bankrupt.)
 ```
 
-Again the results obtained are slightly better than the ones obtained with decision trees. 
+Again the results obtained are slightly better than the ones obtained with decision trees. Now we are going to build again a decision tree model but with hyperparameter tuning.
 
 
-```{r}
+```{r,cache=TRUE}
 rf.train <- train(Bankrupt. ~., 
                   method = "rf", 
                   data = trainSet2,
@@ -567,37 +573,18 @@ rf.pred <- predict(rf.train, testSet2)
 confusionMatrix(rf.pred, testSet2$Bankrupt.)
 ```
 
-```{r}
-rf.pred2 <- predict(rf.train, testSet)
-confusionMatrix(rf.pred2, testSet$Bankrupt.)
-```
-
-
+Again, with only a difference of 0.009 on the accuracy we have made our model slightly better with hyperparameter tunning.
 
 ## Gradient Boosting
 
+Until now we have been testing methods both with and without hyperparameter tunning. However, the methods that we have left are more complex than the previous ones and setting default parameters are quite a random thing to do now. Therefore, from now on we will be using directly the functions from caret were it does the tunning automatically.
 
-```{r}
-GBM.train <- gbm(Bankrupt.~., data=trainSet2,
-                 distribution= "bernoulli",n.trees=250,shrinkage = 0.01,interaction.depth=2,n.minobsinnode = 8)
-threshold = 0.2
-gbmProb = predict(GBM.train, newdata=testSet2, n.trees=250, type="response")
-gbmPred = rep("No", nrow(testSet2))
-gbmPred[which(gbmProb > threshold)] = "Yes"
-CM = confusionMatrix(factor(gbmPred), testing$Churn)$table
-cost = sum(as.vector(CM)*cost.unit)/sum(CM)
-cost
-```
+I am going to use now gradient boost method and see how it works on the data and which hyperparameters are the best ones.
 
-
-
-
-# Now optimize the hyper-parameters with Caret:
-
-```{r}
+```{r,cache=TRUE}
 xgb_grid = expand.grid(
   nrounds = c(500,1000),
-  eta = c(0.01, 0.001), # c(0.01,0.05,0.1)
+  eta = c(0.01, 0.001), 
   max_depth = c(2, 4, 6),
   gamma = 1,
   colsample_bytree = c(0.2, 0.4),
@@ -614,37 +601,47 @@ xgb.train = train(Bankrupt. ~ .,  data=testSet2,
                   method = "xgbTree"
 )
 
-xgb.pred <- predict(xgb.train, testSet)
-confusionMatrix(xgb.pred, testSet$Bankrupt.)
+xgb.pred <- predict(xgb.train, testSet2)
+confusionMatrix(xgb.pred, testSet2$Bankrupt.)
 ```
 
-```{r}
-# Variable importance
-xgb_imp <- varImp(xgb.train, scale = F)
-plot(xgb_imp, scales = list(y = list(cex = .95)))
-```
+We can clearly see that this method does not really work with our data as good as other methods have been doing. This one of the lowest accuracy obtained so far and yet, it isn't even that bad.
 
+The problem with this model is that it is predicting a lot of companies as not being in Bankruptcy when they really are and this is what we want to avoid as much as possible. 
 
-# ```{r}
-# threshold = 0.2
-# xgbProb = predict(xgb.train, newdata=testSet, type="prob")
-# xgbPred = rep(0, nrow(testSet))
-# xgbPred[which(xgbProb[,2] > threshold)] = 1
-# CM = confusionMatrix(factor(xgbPred), testSet$Bankrupt.)$table
-# cost = sum(as.vector(CM)*cost.unit)/sum(CM)
-# cost
-# ```
-
-
-# not too good, because we need to improve the grid but too expensive...
-
-# Even more advanced ideas:
-# instead of using a fixed cost matrix for each customer, we could consider a 
-# different matrix for each, depending on the value of each customer for the company
+If we incremented the grid we will probably obtain better results, however this will be computationally expensive and as we have gotten better results using simpler methods we will keep them instead of trying to make this fit our data.
 
 ## Neural Networks
 
+Finally we are going to build two different methods using neural networks. This is one of the methods that is having more success in today's real life applications. Therefore, the expectation of the results are incredible high.
+
+First of all we are going to use a simple neural networks with just one hidden layer. 
+
+```{r,results=FALSE,cache=TRUE}
+nn.train <- train(Bankrupt. ~., 
+                  method = "nnet", 
+                  data = trainSet2,
+                  preProcess = c("center", "scale"),
+                  MaxNWts = 1000,
+                  maxit = 100,
+                  tuneGrid = expand.grid(size=c(2,4,6), decay=c(0.01,0.001)), 
+                  metric = "Kappa",
+                  maximize = F,
+                  trControl = ctrl)
+
+```
 ```{r}
+nn.train$bestTune
+nn.pred <- predict(nn.train, testSet2)
+confusionMatrix(nn.pred, testSet2$Bankrupt.)
+```
+
+As we can see the accuracy is not bad at all, but it is not the best one obtained so far. Indeed we are getting now false predictions over companies that are in bankruptcy and this is one of the things that we want to avoid, so this might not be the best one to use.
+
+We are now going to add more hidden layers to improve the performance of the model. So we will be now fitting a model using deep neural networks.
+
+
+```{r,cache=TRUE,results=FALSE,warning=FALSE,message=FALSE}
 dnn.train <- train(Bankrupt. ~., 
                   method = "dnn", 
                   data = trainSet2,
@@ -655,80 +652,181 @@ dnn.train <- train(Bankrupt. ~.,
                                          layer3 = 0:2,
                                          hidden_dropout = 0, 
                                          visible_dropout = 0),
-                  metric = "kappa",
+                  metric = "Kappa",
                   maximize = F,
                   trControl = ctrl)
+```
 
+```{r}
+dnn.pred <- predict(dnn.train, testSet2)
+confusionMatrix(dnn.pred, testSet2$Bankrupt.)
+```
 
-xgb.pred <- predict(xgb.train, testSet2)
-confusionMatrix(xgb.pred, testSet2$Bankrupt.)
+For this case, even though the accuracy is quite similar to the one obtained in the neural network with just one hidden layer, we can see how the predictions based on our goals are slightly worse than the other.
+
+## Best Machine Learning Model
+
+Since we started this second part we have been testing a partition from our data once it was balanced. However the real test should be made over the test partition that we did over our original dataset, which was very unbalanced.
+
+Therefore, along all this machine learning methods that has been fitted from a balaced dataset, I am going to see which one of them give a better performance for this test partition and try to optimize it as much as possible.
+
+As expected, the best methods are always those which have been built using hyperparameter tunning, so we will only check those in this step.
+
+### KNN
+
+```{r}
+knn.Pred.final = predict(knnFit, testSet)
+confusionMatrix(knn.Pred.final,testSet$Bankrupt.)
+```
+
+### SVM
+
+```{r}
+svm.Pred.final = predict(svmFit_rad, testSet)
+confusionMatrix(svm.Pred.final,testSet$Bankrupt.)
 ```
 
 
+### Decision Trees
 
 ```{r}
+c50.pred.final <- predict(fit.c50, newdata=testSet)
+confusionMatrix(c50.pred.final, testSet$Bankrupt.)
+```
+
+### Random Forest
+
+```{r}
+rf.pred.final <- predict(rf.train, testSet)
+confusionMatrix(rf.pred.final, testSet$Bankrupt.)
+```
+
+### Gradient Boosting
+
+```{r}
+xgb.pred.final <- predict(xgb.train, testSet)
+confusionMatrix(xgb.pred.final, testSet$Bankrupt.)
+```
+
+### Neural networks
+
+```{r}
+nn.pred.final <- predict(nn.train, testSet)
+confusionMatrix(nn.pred.final, testSet$Bankrupt.)
+```
+
+As expected, all the methods give a very good prediction in general. However, I had our goals clearly defined since the project started. From an investors point of view, one of the most important things is not predicting companies that are in bankruptcy as they are not, so our goal is to minimize the error of predicting 0 when 1 is the real value. Also, a high number on the other side of wrong classification is not a problem at all as those companies might be very close to being in bankruptcy even though they are not declared yet.
+
+Following this goal we can see that the best models are the ones obtained using knn, svm and simple neural networks. Indeed, the neural network is already a really good model, however we are going to try to make it a little bit better using a threshold.
+
+Notice that we have nor been using thresholds in this second part of the project. This is due to the fact that for almost all the confusion matrices, we have been obtaining very promising results. Some of them were that good that using thresholds would not make a difference in the model.
+
+In order to select the best threshold we are going to use the same loop that we did for the first step.
+
+```{r,cache=TRUE,results=FALSE}
 relative.cost <- c(1, 2, 0.5, 0.0)
-CM = confusionMatrix(xgb.pred, testSet$Bankrupt.)$table
+CM = confusionMatrix(nn.pred.final, testSet$Bankrupt.)$table
 sum(relative.cost*CM)
 cost.i = matrix(NA, nrow = 10, ncol = 9)
-
 j <- 0
 
-
-for (threshold in seq(0.35,0.75,0.05)){
+for (threshold in seq(0.3,0.8,0.1)){
 
   j <- j + 1
 
   for(i in 1:10){
-
     # partition data intro training (80%) and testing sets (20%)
-    d <- createDataPartition(trainSet$Bankrupt., p = 0.8, list = FALSE)
+    d <- createDataPartition(trainSet2$Bankrupt., p = 0.8, list = FALSE)
     
-    train<-trainSet[d,]
-    test <-trainSet[-d,]  
+    train<-trainSet2[d,]
+    test <-trainSet2[-d,]
     
-    dnn.train <- train(Bankrupt. ~., 
-                  method = "dnn", 
-                  data = trainSet,
+    nn.train_th <- train(Bankrupt. ~., 
+                  method = "nnet", 
+                  data = train,
                   preProcess = c("center", "scale"),
-                  numepochs = 20, # number of iterations on the whole training set
-                  tuneGrid = expand.grid(layer1 = 1:4,
-                                         layer2 = 0:2,
-                                         layer3 = 0:2,
-                                         hidden_dropout = 0, 
-                                         visible_dropout = 0),
-                  metric = "kappa",
+                  MaxNWts = 1000,
+                  maxit = 100,
+                  tuneGrid = expand.grid(size=2, decay=0.01), 
+                  metric = "Kappa",
                   maximize = F,
                   trControl = ctrl)
     
-    lrProb = predict(dnn.train, test, type="prob")
+    nn.Prob = predict(nn.train_th, test, type="prob")
     
-    lrPred = rep(0, nrow(test))
-    lrPred[which(lrProb[,2] > threshold)] = 1
-    lrPred = factor(lrPred)
+    nnPred = rep(0, nrow(test))
+    nnPred[which(nn.Prob[,2] > threshold)] = 1
+    nnPred = factor(nnPred)
     
-    CM = confusionMatrix(lrPred, test$Bankrupt.)$table
+    CM = confusionMatrix(nnPred, test$Bankrupt.)$table
     
     cost.i[i,j] <- sum(relative.cost*CM)/nrow(test) # unitary cost
-
-    
   }
 }
-
+```
+```{r,cache=TRUE}
 boxplot(cost.i, main = "Hyper-parameter selection",
         ylab = "cost",
         xlab = "threshold value",names = seq(0.35,0.75,0.05),col="lightblue")
+
 ```
 
+From this boxplot, we obtain again pretty similar conclusions to the ones obtained in the first step, if are looking for having less error in the prediction of Bankruptcy companies, our optimal threshold is 0.35. If we wanted to get lower error on predicting companies that are not in Bankruptcy we will choose a 0.55 threshold.
+
+```{r}
+threshold = 0.35
+nnProb = predict(nn.train, newdata=testSet, type="prob")
+nnPred = rep(0, nrow(testSet))
+nnPred[which(nnProb[,2] > threshold)] = 1
+confusionMatrix(as.factor(nnPred),testSet$Bankrupt.)
+```
+
+```{r}
+threshold = 0.55
+nnProb = predict(nn.train, newdata=testSet, type="prob")
+nnPred = rep(0, nrow(testSet))
+nnPred[which(nnProb[,2] > threshold)] = 1
+confusionMatrix(as.factor(nnPred),testSet$Bankrupt.)
+```
+
+## Conclusions 2nd Step
+
+Along this second step I have had the opportunity to test several Machine Learning methods to do classification and it has been clearly shown that all of them work pretty good. Obviously some of them had a better performance with our dataset, but after all, most of them with our without hyperparameter tunnning ended up being good classification methods, with more than a 80% of accuracy for classification.
+
+One of the biggest challenges that I have faced in this project is the grid definition for the hyperparameter tunning. Every method has different hyperparameters and it was quite difficult to understand which ranges should I give for each of them. Also, as some of this methods are very expensive in terms of computation, it happened that you could not give a very large grid search for some methods because they will take too long to fit the model.
+
+Another point to mention is the fact that I was getting almost perfect results with some of our models when we were testing them with the balanced partition. Later on I realized that the classification was so "perfect" due to that the method used to balance the class was adding points pretty near to the ones that were original in the dataset, therefore, for methods like knn and svm, the classification was pretty easy. So, even though we still got good results with the original test, would have been nice to be able to fit the models with a real well balanced dataset.
+
+
+# Best model
+
+From both steps of the project we have ended with one model being the best one. However, which one is the best between these two?
+
+We are going to assume the case were we do not want any companies that are in bankruptcy to be predicted as not bankruptcy. Therefore we will set up the threshold to minimize this for both methods, which was 0.35 for both of them. From the first step we concluded that LDA was the best method, whereas for this case it was a simple neural network.
 
 
 ```{r}
-threshold = 0.45
-dnnProb = predict(dnn.train, newdata=testSet, type="prob")
-dnnPred = rep(0, nrow(testSet))
-dnnPred[which(dnnProb[,2] > threshold)] = 1
-confusionMatrix(as.factor(dnnPred),testSet$Bankrupt.)
-#EconomicCost(data = data.frame(pred  = dnnPred, obs = testing$Churn))
+#LDA
+lrProb = predict(ldaFit, newdata=testSet, type="prob")
+lrPred = rep(0, nrow(testSet))
+lrPred[which(lrProb[,2] > threshold)] = 1
+lrPred = factor(lrPred)
+confusionMatrix(lrPred,testSet$Bankrupt.)
+
+#Neural Network
+confusionMatrix(as.factor(nnPred),testSet$Bankrupt.)
 ```
+
+Therefore, we can see that even though both predictions are very similar, we are actually obtaining slightly better results given our goal for the Neural network, as it is predicting a lower number of companies wrong. In the other hand, if we are considering the accuracy, then the LDA model is the best one.
+
+# Conclusions
+
+Through all this project I have came across several challenges that I have finally be able to deal with and that have made me learn different techniques and realize that on real life problems, datasets are not always perfect. I have also had the opportunity to apply every single classification method given in class and see its performance, compare them and analyze which one is better for each case.
+
+As it can be seen, it does not exist a best final model, it will always depend on what you are looking for and the assumptions or risks that you want to take.
+
+One of the points where I really saw that there was a big difference is the computational cost for all the Machine Learning models. It has always taken much longer to fit almost all the these methods than those from Probabilistic learning.
+
+Finally, I can conclude by saying that this project has properly introduced me in some of the basic and most important parts for data Science.
 
 
